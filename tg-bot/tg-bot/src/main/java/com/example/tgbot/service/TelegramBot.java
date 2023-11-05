@@ -4,6 +4,7 @@ import com.example.tgbot.config.BotConfig;
 import com.example.tgbot.model.UserModel;
 import com.example.tgbot.model.WeatherModel;
 import com.example.tgbot.repository.UserModelRepository;
+import jakarta.annotation.PostConstruct;
 import lombok.AllArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -16,11 +17,13 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.sql.Time;
 import java.text.ParseException;
-import java.util.Optional;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Random;
+import java.util.Timer;
+import java.util.TimerTask;
 
 @Component
 @AllArgsConstructor
@@ -40,6 +43,44 @@ public class TelegramBot extends TelegramLongPollingBot {
         return botConfig.getToken();
     }
 
+    @PostConstruct
+    public void init(){
+        sendMessage(1112597079L, "bot is started!");
+        Timer timer = new Timer();
+        timer.schedule(new TimerTask() {
+            public void run() {
+                sendEveryDayWeather();
+            }
+        }, 0, 60000);
+    }
+
+    private void sendEveryDayWeather(){
+        for (var user : userModelRepository.findAll()){
+            Time userTime = user.getTime();
+            if (userTime == null) continue;
+            Long chatId = user.getId();
+            if (String.valueOf(userTime).substring(0, 5).equals(getTime(new Date()))){
+                WeatherModel weatherModel = new WeatherModel();
+                String weather = "";
+                String photoWeather = "";
+                try {
+                    weather = WeatherService.getWeather(weatherModel, userModelRepository.findById(chatId).get().getCity());
+                    Random random = new Random();
+                    int photoIndex = random.nextInt(1, 325);
+                    photoWeather = ImageService.getPathImage("C:/Users/Mi/IdeaProjects/tg-bot/tg-bot/tg-bot/src/main/resources/images/" + photoIndex + "_.jpg", weather);
+
+                } catch (IOException e) {
+                    sendMessage(chatId, "ерор, что-то сломалось(");
+                } catch (ParseException e) {
+                    throw new RuntimeException("Unable to parse date");
+                }
+                sendPhoto(chatId, photoWeather);
+            }
+        }
+    }
+    private String getTime(Date date){
+        return new SimpleDateFormat("HH:mm").format(date);
+    }
     @Override
     public void onUpdateReceived(Update update) {
         WeatherModel weatherModel = new WeatherModel();
@@ -73,7 +114,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                     UserModel user = userModelRepository.findById(chatId).get();
                     user.setTime(time);
                     userModelRepository.save(user);
-                    sendMessage(chatId, "буду беспокоить тебя в " + time);
+                    sendMessage(chatId, "буду беспокоить тебя в " + time.toString().substring(0, 5));
                 }
                 catch (Exception e){
                     sendMessage(chatId, "время HH:mm \nчто сложного??");
@@ -102,18 +143,19 @@ public class TelegramBot extends TelegramLongPollingBot {
     }
 
     private void startCommandReceived(Long chatId, String name) {
-        String answer = name.toLowerCase() + "\n" +
-                "привет" + "\n" +
-                "я глеб" + "\n" +
-                "буду отправлять тебе погоду";
-        sendMessage(chatId, answer);
-        String mess = "для начала краткий гайд." +
-                " если напишешь слово 'погода' я отправлю тебе погоду погоду прямо сейчас в спб." +
-                " также я буду отправлять тебе погоду в 9 утра. \n" +
+        sendMessage(chatId, name.toLowerCase());
+        sendMessage(chatId, "привет");
+        sendMessage(chatId, "меня зовут глеб");
+        sendMessage(chatId, "я буду отправлять тебе погоду");
+        String mess = "для начала краткий гайд. " +
+                "если напишешь слово 'погода' я отправлю тебе погоду прямо сейчас в спб. " +
+                "также я буду отправлять тебе погоду в 9 утра. \n" +
                 "если ты вдруг захочешь сменить город или время отправки " +
                 "используй комады 'город (твой город на английском)' и 'время (желаемое время отправки в формате HH:mm)' соответственно. \n" +
+                "важно: указываемое время должно быть московское. бот также отправляет картинку с московским временем. " +
+                "если ты получил еррор то вероятнее всего ты некорректно указал(а) город (для примера нужно писать Moscow, Saint Petersburg короче в переводчик зайди ок)\n" +
                 "по всем вопросам пожеланиям предложениям приглашениям попить пиво обращаться к @glebchik_gg\n" +
-                "глеб не гарантирует что на всех картинках будет разборчив текст.\n" +
+                "глеб не гарантирует что на всех картинках будет разборчив текст. еще он иногда может выходить за границы картинки.\n" +
                 "продолжая пользоваться ботом вы соглашаетесь никогда в жизни не обижать котят";
         sendMessage(chatId, mess);
     }
